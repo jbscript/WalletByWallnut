@@ -1,30 +1,18 @@
 import React from "react";
 import {
   Utensils, ShoppingBag, Home, Bus, Car, Ticket, Monitor, CreditCard,
-  TrendingUp, Wallet, Briefcase, Gift, Tag, Coins, Banknote, PiggyBank, ArrowLeftRight,
+  TrendingUp, Wallet, Briefcase, Gift, Tag, Coins, Banknote, PiggyBank,
+  ArrowLeftRight, LucideIcon,
 } from "lucide-react";
 
-const ICONS = {
-  utensils: Utensils,
-  "shopping-bag": ShoppingBag,
-  home: Home,
-  bus: Bus,
-  car: Car,
-  ticket: Ticket,
-  monitor: Monitor,
-  "credit-card": CreditCard,
-  "trending-up": TrendingUp,
-  wallet: Wallet,
-  briefcase: Briefcase,
-  gift: Gift,
-  tag: Tag,
-  coins: Coins,
-  banknote: Banknote,
-  "piggy-bank": PiggyBank,
-  "arrow-left-right": ArrowLeftRight,
+const ICONS: Record<string, LucideIcon> = {
+  utensils: Utensils, "shopping-bag": ShoppingBag, home: Home, bus: Bus, car: Car,
+  ticket: Ticket, monitor: Monitor, "credit-card": CreditCard, "trending-up": TrendingUp,
+  wallet: Wallet, briefcase: Briefcase, gift: Gift, tag: Tag, coins: Coins,
+  banknote: Banknote, "piggy-bank": PiggyBank, "arrow-left-right": ArrowLeftRight,
 };
 
-const hexToBg = (hex, alpha = 0.12) => {
+const hexToBg = (hex: string, alpha = 0.12): string => {
   if (!hex || hex[0] !== "#") return `rgba(148,163,184,${alpha})`;
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -32,7 +20,14 @@ const hexToBg = (hex, alpha = 0.12) => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
-export const CategoryIcon = ({ name = "tag", color = "#94a3b8", size = 40, iconSize = 18 }) => {
+interface Props {
+  name?: string;
+  color?: string;
+  size?: number;
+  iconSize?: number;
+}
+
+export const CategoryIcon: React.FC<Props> = ({ name = "tag", color = "#94a3b8", size = 40, iconSize = 18 }) => {
   const Cmp = ICONS[name] || Tag;
   return (
     <div

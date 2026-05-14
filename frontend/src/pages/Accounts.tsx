@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { useApp } from "@/context/AppContext";
-import { api, fmtCurrency } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
+import { api, fmtCurrency, Account } from "@/lib/api";
 import { Plus, MoreVertical, Archive, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CategoryIcon from "@/components/CategoryIcon";
@@ -10,32 +10,38 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 
-export default function Accounts() {
-  const { accounts, refreshAccounts, bumpRecords } = useApp();
+const Accounts: React.FC = () => {
+  const accounts = useAppStore((s) => s.accounts);
+  const refreshAccounts = useAppStore((s) => s.refreshAccounts);
+  const bumpRecords = useAppStore((s) => s.bumpRecords);
+
   const [open, setOpen] = useState(false);
-  const [editAccount, setEditAccount] = useState(null);
-  const [balances, setBalances] = useState({});
+  const [editAccount, setEditAccount] = useState<Account | null>(null);
+  const [balances, setBalances] = useState<Record<string, number>>({});
   const [showArchived, setShowArchived] = useState(false);
 
   const refresh = async () => {
-    const { data } = await api.get("/analytics/summary", { params: { start_date: "1970-01-01", end_date: "2999-12-31" } });
+    const { data } = await api.get<{ account_balances: Record<string, number> }>(
+      "/analytics/summary",
+      { params: { start_date: "1970-01-01", end_date: "2999-12-31" } }
+    );
     setBalances(data.account_balances || {});
   };
 
   useEffect(() => { refresh(); }, [accounts]);
 
-  const handleEdit = (a) => { setEditAccount(a); setOpen(true); };
-  const handleDelete = async (a) => {
+  const handleEdit = (a: Account) => { setEditAccount(a); setOpen(true); };
+  const handleDelete = async (a: Account) => {
     if (!window.confirm(`Delete account "${a.name}"? Linked records will also be removed.`)) return;
     try { await api.delete(`/accounts/${a.id}`); toast.success("Account deleted"); await refreshAccounts(); bumpRecords(); }
-    catch (e) { toast.error("Failed to delete"); }
+    catch { toast.error("Failed to delete"); }
   };
-  const handleArchive = async (a) => {
+  const handleArchive = async (a: Account) => {
     try { await api.patch(`/accounts/${a.id}`, { archived: !a.archived }); toast.success(a.archived ? "Restored" : "Archived"); await refreshAccounts(); }
-    catch (e) { toast.error("Failed to archive"); }
+    catch { toast.error("Failed to archive"); }
   };
 
-  const visible = showArchived ? accounts : accounts.filter(a => !a.archived);
+  const visible = showArchived ? accounts : accounts.filter((a) => !a.archived);
 
   return (
     <div className="mx-auto max-w-7xl px-6 md:px-8 py-8">
@@ -82,7 +88,6 @@ export default function Accounts() {
           </div>
         ))}
 
-        {/* Add card */}
         <button onClick={() => { setEditAccount(null); setOpen(true); }} data-testid="add-account-card"
                 className="bg-stone-50 border-2 border-dashed border-stone-300 rounded-2xl p-8 flex flex-col items-center justify-center text-stone-500 hover:text-emerald-600 hover:border-emerald-500 hover:bg-emerald-50/30 transition-all min-h-[180px]">
           <Plus size={24} />
@@ -93,4 +98,6 @@ export default function Accounts() {
       <AddAccountModal open={open} onOpenChange={setOpen} editAccount={editAccount} />
     </div>
   );
-}
+};
+
+export default Accounts;

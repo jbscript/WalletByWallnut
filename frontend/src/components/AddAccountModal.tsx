@@ -9,17 +9,22 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
-import { useApp } from "@/context/AppContext";
-import { ICON_NAMES } from "@/components/CategoryIcon";
-import CategoryIcon from "@/components/CategoryIcon";
+import { api, Account } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
+import CategoryIcon, { ICON_NAMES } from "@/components/CategoryIcon";
 
 const COLORS = ["#06b6d4", "#10b981", "#f59e0b", "#f43f5e", "#3b82f6", "#a855f7", "#84cc16", "#dc2626", "#0ea5e9", "#64748b"];
 const TYPES = ["cash", "bank", "card", "savings", "investment"];
 const CURRENCIES = ["INR", "USD", "EUR", "GBP", "JPY", "AUD", "CAD"];
 
-export const AddAccountModal = ({ open, onOpenChange, editAccount }) => {
-  const { refreshAccounts } = useApp();
+interface Props {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  editAccount?: Account | null;
+}
+
+export const AddAccountModal: React.FC<Props> = ({ open, onOpenChange, editAccount }) => {
+  const refreshAccounts = useAppStore((s) => s.refreshAccounts);
   const [name, setName] = useState("");
   const [type, setType] = useState("cash");
   const [currency, setCurrency] = useState("INR");
@@ -29,14 +34,15 @@ export const AddAccountModal = ({ open, onOpenChange, editAccount }) => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open && editAccount) {
+    if (!open) return;
+    if (editAccount) {
       setName(editAccount.name);
       setType(editAccount.type);
       setCurrency(editAccount.currency);
       setInitialBalance(String(editAccount.initial_balance));
       setColor(editAccount.color);
       setIcon(editAccount.icon);
-    } else if (open) {
+    } else {
       setName(""); setType("cash"); setCurrency("INR"); setInitialBalance("0");
       setColor("#06b6d4"); setIcon("wallet");
     }

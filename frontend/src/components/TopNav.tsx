@@ -10,7 +10,7 @@ const links = [
   { to: "/analytics", label: "Analytics" },
 ];
 
-export const TopNav = () => {
+export const TopNav: React.FC = () => {
   const [open, setOpen] = useState(false);
 
   return (

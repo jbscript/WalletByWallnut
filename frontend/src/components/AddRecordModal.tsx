@@ -10,77 +10,101 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Calendar as CalendarIcon, ArrowLeftRight } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import CategoryIcon from "@/components/CategoryIcon";
-import { useApp } from "@/context/AppContext";
-import { api, fmtCurrency } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
+import { api, Record as RecordEntity, RecordType } from "@/lib/api";
 import { format } from "date-fns";
 
-const TYPES = [
-  { id: "expense", label: "Expense", color: "rose" },
-  { id: "income", label: "Income", color: "emerald" },
-  { id: "transfer", label: "Transfer", color: "sky" },
+interface Props {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved?: () => void;
+  editRecord?: RecordEntity | null;
+}
+
+const TYPES: { id: RecordType; label: string }[] = [
+  { id: "expense", label: "Expense" },
+  { id: "income",  label: "Income"  },
+  { id: "transfer", label: "Transfer" },
 ];
 
-export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
-  const { accounts, categories, bumpRecords } = useApp();
-  const [type, setType] = useState("expense");
+export const AddRecordModal: React.FC<Props> = ({ open, onOpenChange, onSaved, editRecord }) => {
+  const accounts = useAppStore((s) => s.accounts);
+  const categories = useAppStore((s) => s.categories);
+  const bumpRecords = useAppStore((s) => s.bumpRecords);
+
+  const [type, setType] = useState<RecordType>("expense");
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
+  const [categoryId, setCategoryId] = useState<string>("");
+  const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [payee, setPayee] = useState("");
-  const [date, setDate] = useState(new Date());
+  const [date, setDate] = useState<Date>(new Date());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open && !editRecord) {
-      // reset defaults
-      setType("expense");
-      setAmount("");
-      setAccountId(accounts[0]?.id || "");
-      setToAccountId(accounts[1]?.id || "");
-      setCategoryId("");
-      setNote("");
-      setPayee("");
-      setDate(new Date());
-    }
-    if (open && editRecord) {
+    if (!open) return;
+    if (editRecord) {
       setType(editRecord.type);
       setAmount(String(editRecord.amount));
       setAccountId(editRecord.account_id);
       setToAccountId(editRecord.to_account_id || "");
       setCategoryId(editRecord.category_id || "");
+      const sub = categories.find((c) => c.id === editRecord.category_id);
+      setSelectedParentId(sub?.parent_id || null);
       setNote(editRecord.note || "");
       setPayee(editRecord.payee || "");
       setDate(new Date(editRecord.date));
+    } else {
+      setType("expense");
+      setAmount("");
+      setAccountId(accounts[0]?.id || "");
+      setToAccountId(accounts[1]?.id || "");
+      setCategoryId("");
+      setSelectedParentId(null);
+      setNote("");
+      setPayee("");
+      setDate(new Date());
     }
-  }, [open, accounts, editRecord]);
+  }, [open, editRecord, accounts, categories]);
 
-  const filteredCategories = useMemo(
-    () => categories.filter((c) => (type === "income" ? c.type === "income" : c.type === "expense")),
+  // Reset selected parent when switching type
+  useEffect(() => {
+    if (!editRecord) {
+      setSelectedParentId(null);
+      setCategoryId("");
+    }
+  }, [type, editRecord]);
+
+  const parents = useMemo(
+    () => categories.filter((c) => c.parent_id === null && c.type === (type === "income" ? "income" : "expense")),
     [categories, type]
+  );
+
+  const subs = useMemo(
+    () => (selectedParentId ? categories.filter((c) => c.parent_id === selectedParentId) : []),
+    [categories, selectedParentId]
   );
 
   const submit = async () => {
     if (!amount || Number(amount) <= 0) return toast.error("Enter a valid amount");
     if (!accountId) return toast.error("Choose an account");
-    if (type === "transfer" && !toAccountId) return toast.error("Choose destination account");
-    if (type === "transfer" && toAccountId === accountId) return toast.error("Pick a different destination");
+    if (type === "transfer") {
+      if (!toAccountId) return toast.error("Choose destination account");
+      if (toAccountId === accountId) return toast.error("Pick a different destination");
+    }
     setSaving(true);
     try {
       const payload = {
-        type,
-        amount: Number(amount),
-        account_id: accountId,
+        type, amount: Number(amount), account_id: accountId,
         to_account_id: type === "transfer" ? toAccountId : null,
         category_id: type === "transfer" ? null : (categoryId || null),
-        note,
-        payee,
-        date: format(date, "yyyy-MM-dd"),
+        note, payee, date: format(date, "yyyy-MM-dd"),
       };
       if (editRecord) {
         await api.patch(`/records/${editRecord.id}`, payload);
@@ -101,19 +125,20 @@ export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
   };
 
   const amountColor = type === "income" ? "text-emerald-600" : type === "expense" ? "text-rose-500" : "text-sky-600";
+  const selectedCategory = categories.find((c) => c.id === categoryId);
+  const selectedParent = categories.find((c) => c.id === selectedParentId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg rounded-3xl p-0 overflow-hidden" data-testid="add-record-dialog">
-        <div className="px-6 pt-6 pb-2">
+      <DialogContent className="max-w-lg rounded-3xl p-0 overflow-hidden max-h-[92vh] flex flex-col" data-testid="add-record-dialog">
+        <div className="px-6 pt-6 pb-2 shrink-0">
           <DialogHeader>
             <DialogTitle className="font-['Outfit'] text-xl">{editRecord ? "Edit Record" : "New Record"}</DialogTitle>
             <DialogDescription className="text-sm text-stone-500">Capture income, expense, or transfer between accounts.</DialogDescription>
           </DialogHeader>
         </div>
 
-        {/* Type tabs */}
-        <div className="px-6">
+        <div className="px-6 shrink-0">
           <div className="inline-flex bg-stone-100 p-1 rounded-full">
             {TYPES.map((t) => (
               <button
@@ -130,8 +155,7 @@ export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
           </div>
         </div>
 
-        {/* Amount */}
-        <div className="px-6 pt-4 pb-2">
+        <div className="px-6 pt-4 pb-2 shrink-0">
           <div className="flex items-end justify-center gap-1 border-b border-stone-200 pb-3">
             <span className={`font-['Outfit'] text-3xl font-semibold ${amountColor}`}>
               {type === "expense" ? "-" : type === "income" ? "+" : ""}₹
@@ -149,8 +173,7 @@ export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
           </div>
         </div>
 
-        <div className="px-6 py-4 space-y-3 max-h-[50vh] overflow-y-auto">
-          {/* Accounts */}
+        <div className="px-6 py-4 space-y-3 overflow-y-auto flex-1">
           {type === "transfer" ? (
             <div className="grid grid-cols-2 gap-3 items-end">
               <div>
@@ -184,29 +207,72 @@ export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
             </div>
           )}
 
-          {/* Category */}
           {type !== "transfer" && (
             <div>
-              <Label className="text-xs uppercase tracking-wider text-stone-500 font-semibold">Category</Label>
-              <div className="grid grid-cols-4 gap-2 mt-2">
-                {filteredCategories.map((c) => (
+              <div className="flex items-center justify-between">
+                <Label className="text-xs uppercase tracking-wider text-stone-500 font-semibold">Category</Label>
+                {selectedParentId && (
                   <button
-                    key={c.id}
-                    onClick={() => setCategoryId(c.id)}
-                    data-testid={`category-pick-${c.name.replace(/\s+/g, "-").toLowerCase()}`}
-                    className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border transition-all ${
-                      categoryId === c.id ? "border-emerald-500 bg-emerald-50/50" : "border-stone-200 hover:border-stone-300"
-                    }`}
+                    onClick={() => setSelectedParentId(null)}
+                    className="text-xs text-stone-500 hover:text-stone-900 inline-flex items-center gap-1"
+                    data-testid="category-back-btn"
                   >
-                    <CategoryIcon name={c.icon} color={c.color} size={36} iconSize={16} />
-                    <span className="text-[11px] font-medium text-stone-700 text-center line-clamp-2">{c.name}</span>
+                    <ChevronLeft size={12} /> Back
                   </button>
-                ))}
+                )}
               </div>
+
+              {selectedParentId && selectedParent && (
+                <div className="flex items-center gap-2 my-2 px-2 py-1.5 bg-stone-50 rounded-lg">
+                  <CategoryIcon name={selectedParent.icon} color={selectedParent.color} size={24} iconSize={12} />
+                  <span className="text-sm font-medium text-stone-700">{selectedParent.name}</span>
+                </div>
+              )}
+
+              {!selectedParentId ? (
+                <div className="grid grid-cols-3 gap-2 mt-2" data-testid="parent-category-grid">
+                  {parents.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setSelectedParentId(p.id)}
+                      data-testid={`parent-pick-${p.name.replace(/\s+/g, "-").toLowerCase()}`}
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all ${
+                        categories.find((c) => c.id === categoryId)?.parent_id === p.id
+                          ? "border-emerald-500 bg-emerald-50/60"
+                          : "border-stone-200 hover:border-stone-300 hover:bg-stone-50"
+                      }`}
+                    >
+                      <CategoryIcon name={p.icon} color={p.color} size={40} iconSize={18} />
+                      <span className="text-[11px] font-semibold text-stone-700 text-center leading-tight line-clamp-2">{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-1.5 mt-2 max-h-72 overflow-y-auto" data-testid="sub-category-grid">
+                  {subs.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setCategoryId(s.id)}
+                      data-testid={`sub-pick-${s.id}`}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all ${
+                        categoryId === s.id ? "border-emerald-500 bg-emerald-50/60" : "border-stone-200 hover:border-stone-300 hover:bg-stone-50"
+                      }`}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                      <span className="text-xs font-medium text-stone-700 truncate">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedCategory && (
+                <div className="text-xs text-stone-500 mt-2">
+                  Selected: <span className="font-semibold text-stone-900">{categories.find(c => c.id === selectedCategory.parent_id)?.name} · {selectedCategory.name}</span>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Note / Payee / Date */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs uppercase tracking-wider text-stone-500 font-semibold">Payee</Label>
@@ -233,7 +299,7 @@ export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-stone-200 bg-stone-50 flex justify-end gap-2">
+        <div className="px-6 py-4 border-t border-stone-200 bg-stone-50 flex justify-end gap-2 shrink-0">
           <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="record-cancel-btn">Cancel</Button>
           <Button onClick={submit} disabled={saving} className="bg-emerald-600 hover:bg-emerald-700" data-testid="record-save-btn">
             {saving ? "Saving..." : (editRecord ? "Update" : "Save")}

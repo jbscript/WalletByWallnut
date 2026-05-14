@@ -1,13 +1,14 @@
 import React, { useState } from "react";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useApp } from "@/context/AppContext";
+import { useAppStore } from "@/store/useAppStore";
 import { monthRange, shiftMonth } from "@/lib/api";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export const PeriodSwitcher = () => {
-  const { period, setPeriod } = useApp();
+export const PeriodSwitcher: React.FC = () => {
+  const period = useAppStore((s) => s.period);
+  const setPeriod = useAppStore((s) => s.setPeriod);
   const [open, setOpen] = useState(false);
 
   const cur = new Date(period.start);
@@ -15,18 +16,17 @@ export const PeriodSwitcher = () => {
   const curMonth = cur.getMonth();
   const [pickerYear, setPickerYear] = useState(curYear);
 
-  const move = (delta) => {
-    const next = shiftMonth(period.start, delta);
-    setPeriod(monthRange(next));
+  const move = (delta: number) => {
+    setPeriod(monthRange(shiftMonth(period.start, delta)));
   };
 
-  const pickMonth = (m) => {
+  const pickMonth = (m: number) => {
     const d = new Date(pickerYear, m, 1);
     setPeriod(monthRange(d.toISOString().slice(0, 10)));
     setOpen(false);
   };
 
-  const presets = [
+  const presets: { label: string; get: () => Date }[] = [
     { label: "This month", get: () => new Date() },
     { label: "Last month", get: () => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d; } },
     { label: "3 months ago", get: () => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d; } },
@@ -55,7 +55,6 @@ export const PeriodSwitcher = () => {
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-80 p-0 rounded-2xl overflow-hidden" align="end">
-          {/* Year header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 bg-stone-50">
             <button
               onClick={() => setPickerYear((y) => y - 1)}
@@ -74,7 +73,6 @@ export const PeriodSwitcher = () => {
             </button>
           </div>
 
-          {/* Month grid */}
           <div className="grid grid-cols-3 gap-2 p-3">
             {MONTHS.map((m, i) => {
               const isActive = pickerYear === curYear && i === curMonth;
@@ -99,14 +97,18 @@ export const PeriodSwitcher = () => {
             })}
           </div>
 
-          {/* Presets */}
           <div className="border-t border-stone-200 p-2">
             <div className="text-[10px] uppercase tracking-[0.18em] font-semibold text-stone-400 px-2 py-1">Quick jump</div>
             <div className="grid grid-cols-2 gap-1">
               {presets.map((p) => (
                 <button
                   key={p.label}
-                  onClick={() => { setPeriod(monthRange(p.get().toISOString().slice(0, 10))); setPickerYear(p.get().getFullYear()); setOpen(false); }}
+                  onClick={() => {
+                    const d = p.get();
+                    setPeriod(monthRange(d.toISOString().slice(0, 10)));
+                    setPickerYear(d.getFullYear());
+                    setOpen(false);
+                  }}
                   data-testid={`preset-${p.label.toLowerCase().replace(/\s+/g, "-")}`}
                   className="text-left text-xs font-medium text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg px-2.5 py-1.5 transition-colors"
                 >

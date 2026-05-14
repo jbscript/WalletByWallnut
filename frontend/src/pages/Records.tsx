@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useApp } from "@/context/AppContext";
-import { api, fmtCurrency } from "@/lib/api";
+import { useAppStore } from "@/store/useAppStore";
+import { api, fmtCurrency, Record as RecordEntity } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -16,48 +16,41 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 
-const TYPE_LABELS = { income: "Income", expense: "Expense", transfer: "Transfer" };
+const Records: React.FC = () => {
+  const accounts = useAppStore((s) => s.accounts);
+  const categories = useAppStore((s) => s.categories);
+  const period = useAppStore((s) => s.period);
+  const recordsVersion = useAppStore((s) => s.recordsVersion);
 
-export default function Records() {
-  const { accounts, categories, period, recordsVersion } = useApp();
-  const [records, setRecords] = useState([]);
+  const [records, setRecords] = useState<RecordEntity[]>([]);
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [parentCatFilter, setParentCatFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sort, setSort] = useState("date_desc");
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [editing, setEditing] = useState<RecordEntity | null>(null);
 
   const accountMap = useMemo(() => Object.fromEntries(accounts.map((a) => [a.id, a])), [accounts]);
   const categoryMap = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
+  const parentCategories = useMemo(() => categories.filter((c) => c.parent_id === null), [categories]);
 
   const fetchRecords = async () => {
-    const params = {
-      start_date: period.start,
-      end_date: period.end,
-      sort,
-    };
+    const params: Record<string, any> = { start_date: period.start, end_date: period.end, sort };
     if (accountFilter !== "all") params.account_id = accountFilter;
-    if (categoryFilter !== "all") params.category_id = categoryFilter;
+    if (parentCatFilter !== "all") params.parent_category_id = parentCatFilter;
     if (typeFilter !== "all") params.type = typeFilter;
     if (search.trim()) params.search = search.trim();
-    const { data } = await api.get("/records", { params });
+    const { data } = await api.get<RecordEntity[]>("/records", { params });
     setRecords(data);
   };
 
-  useEffect(() => { fetchRecords(); }, [period, accountFilter, categoryFilter, typeFilter, sort, recordsVersion]);
+  useEffect(() => { fetchRecords(); }, [period, accountFilter, parentCatFilter, typeFilter, sort, recordsVersion]);
 
-  const onSearchKey = (e) => { if (e.key === "Enter") fetchRecords(); };
-
-  const handleDelete = async (r) => {
-    if (!window.confirm("Delete this record?")) return;
-    try { await api.delete(`/records/${r.id}`); toast.success("Deleted"); fetchRecords(); }
-    catch { toast.error("Failed"); }
-  };
+  const onSearchKey = (e: React.KeyboardEvent) => { if (e.key === "Enter") fetchRecords(); };
 
   const grouped = useMemo(() => {
-    const out = {};
+    const out: Record<string, RecordEntity[]> = {};
     for (const r of records) {
       out[r.date] = out[r.date] || [];
       out[r.date].push(r);
@@ -72,12 +65,17 @@ export default function Records() {
   }, 0), [records]);
 
   const reset = () => {
-    setSearch(""); setAccountFilter("all"); setCategoryFilter("all"); setTypeFilter("all"); setSort("date_desc");
+    setSearch(""); setAccountFilter("all"); setParentCatFilter("all"); setTypeFilter("all"); setSort("date_desc");
+  };
+
+  const handleDelete = async (r: RecordEntity) => {
+    if (!window.confirm("Delete this record?")) return;
+    try { await api.delete(`/records/${r.id}`); toast.success("Deleted"); fetchRecords(); }
+    catch { toast.error("Failed"); }
   };
 
   return (
     <div className="mx-auto max-w-7xl px-6 md:px-8 py-8 flex gap-6">
-      {/* Sidebar */}
       <aside className="w-72 shrink-0 bg-white border border-stone-200 rounded-2xl p-5 h-fit sticky top-20" data-testid="records-filter-sidebar">
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-['Outfit'] text-xl font-bold">Records</h2>
@@ -117,11 +115,11 @@ export default function Records() {
           </div>
           <div>
             <Label className="text-xs uppercase tracking-wider text-stone-500 font-semibold">Category</Label>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <Select value={parentCatFilter} onValueChange={setParentCatFilter}>
               <SelectTrigger data-testid="records-category-filter"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
-                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                {parentCategories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -141,7 +139,6 @@ export default function Records() {
         </div>
       </aside>
 
-      {/* List */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-5">
           <div>
@@ -174,6 +171,7 @@ export default function Records() {
                 <div className="bg-white border border-stone-200 rounded-2xl divide-y divide-stone-100 overflow-hidden">
                   {items.map((r) => {
                     const cat = r.category_id ? categoryMap[r.category_id] : null;
+                    const parent = cat?.parent_id ? categoryMap[cat.parent_id] : null;
                     const acc = accountMap[r.account_id];
                     const toAcc = r.to_account_id ? accountMap[r.to_account_id] : null;
                     const amountColor = r.type === "income" ? "text-emerald-600" : r.type === "expense" ? "text-rose-500" : "text-sky-600";
@@ -191,7 +189,9 @@ export default function Records() {
                             {r.type === "transfer" ? "Transfer" : (cat?.name || "Uncategorized")}
                           </div>
                           <div className="text-xs text-stone-500 truncate">
-                            {r.payee || r.note || ""}{(r.payee && r.note) ? " · " + r.note : ""}
+                            {parent && parent.name !== cat?.name ? <span className="font-medium">{parent.name}</span> : ""}
+                            {parent && (r.payee || r.note) ? " · " : ""}
+                            {r.payee}{r.payee && r.note ? " · " : ""}{r.note}
                           </div>
                         </div>
                         <div className="text-xs text-stone-500 hidden md:flex items-center gap-1.5">
@@ -225,4 +225,6 @@ export default function Records() {
       <AddRecordModal open={open} onOpenChange={setOpen} editRecord={editing} onSaved={fetchRecords} />
     </div>
   );
-}
+};
+
+export default Records;

@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { PeriodSwitcher } from "@/components/PeriodSwitcher";
-import { useApp } from "@/context/AppContext";
+import { useAppStore } from "@/store/useAppStore";
 import { api, fmtCurrency } from "@/lib/api";
 import { ArrowDownRight, ArrowUpRight, Wallet as WalletIcon } from "lucide-react";
 import CategoryIcon from "@/components/CategoryIcon";
@@ -9,7 +9,18 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 
-const SummaryCard = ({ label, value, hint, accent, icon: Icon, testid }) => (
+interface Summary {
+  total_balance: number;
+  income: number;
+  expense: number;
+  cash_flow: number;
+  account_balances: Record<string, number>;
+}
+
+interface TrendPoint { date: string; balance: number; }
+interface StructureItem { category_id: string; name: string; color: string; icon: string; amount: number; }
+
+const SummaryCard: React.FC<{ label: string; value: string; hint?: string; accent: string; icon: any; testid: string }> = ({ label, value, hint, accent, icon: Icon, testid }) => (
   <div className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow rise-in" data-testid={testid}>
     <div className="flex items-start justify-between">
       <div>
@@ -24,49 +35,44 @@ const SummaryCard = ({ label, value, hint, accent, icon: Icon, testid }) => (
   </div>
 );
 
-export default function Dashboard() {
-  const { accounts, period, recordsVersion } = useApp();
-  const [summary, setSummary] = useState(null);
-  const [trend, setTrend] = useState([]);
-  const [structure, setStructure] = useState({ items: [], total: 0 });
+const Dashboard: React.FC = () => {
+  const accounts = useAppStore((s) => s.accounts);
+  const period = useAppStore((s) => s.period);
+  const recordsVersion = useAppStore((s) => s.recordsVersion);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const [structure, setStructure] = useState<{ items: StructureItem[]; total: number }>({ items: [], total: 0 });
 
   useEffect(() => {
     (async () => {
       try {
         const [s, t, st] = await Promise.all([
-          api.get("/analytics/summary", { params: { start_date: period.start, end_date: period.end } }),
-          api.get("/analytics/balance-trend", { params: { start_date: period.start, end_date: period.end } }),
-          api.get("/analytics/expenses-structure", { params: { start_date: period.start, end_date: period.end } }),
+          api.get<Summary>("/analytics/summary", { params: { start_date: period.start, end_date: period.end } }),
+          api.get<{ series: TrendPoint[] }>("/analytics/balance-trend", { params: { start_date: period.start, end_date: period.end } }),
+          api.get<{ items: StructureItem[]; total: number }>("/analytics/expenses-structure", { params: { start_date: period.start, end_date: period.end } }),
         ]);
         setSummary(s.data);
         setTrend(t.data.series);
         setStructure(st.data);
-      } catch (e) {
-        console.error(e);
-      }
+      } catch (e) { console.error(e); }
     })();
   }, [period, recordsVersion]);
 
   const balances = summary?.account_balances || {};
-
   const pieData = useMemo(
-    () => structure.items.filter(i => i.amount > 0).map(i => ({ name: i.name, value: i.amount, color: i.color })),
+    () => structure.items.filter((i) => i.amount > 0).map((i) => ({ name: i.name, value: i.amount, color: i.color })),
     [structure]
   );
 
   return (
     <div className="mx-auto max-w-7xl px-6 md:px-8 py-8">
-      {/* Account chips */}
       <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2 mb-6">
         {accounts.map((a) => (
-          <div key={a.id} className="shrink-0 flex items-center gap-3 bg-white border border-stone-200 rounded-2xl px-4 py-3 shadow-sm min-w-[200px]"
-               data-testid={`account-chip-${a.id}`}>
+          <div key={a.id} className="shrink-0 flex items-center gap-3 bg-white border border-stone-200 rounded-2xl px-4 py-3 shadow-sm min-w-[200px]" data-testid={`account-chip-${a.id}`}>
             <CategoryIcon name={a.icon} color={a.color} size={40} iconSize={20} />
             <div>
               <div className="text-xs text-stone-500 font-medium">{a.name}</div>
-              <div className="font-['Outfit'] font-semibold text-stone-900">
-                {fmtCurrency(balances[a.id] || 0, a.currency)}
-              </div>
+              <div className="font-['Outfit'] font-semibold text-stone-900">{fmtCurrency(balances[a.id] || 0, a.currency)}</div>
             </div>
           </div>
         ))}
@@ -77,47 +83,17 @@ export default function Dashboard() {
         <PeriodSwitcher />
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6">
-        <SummaryCard
-          label="Balance"
-          value={fmtCurrency(summary?.total_balance || 0)}
-          hint="Across all accounts"
-          accent="bg-stone-900"
-          icon={WalletIcon}
-          testid="summary-balance"
-        />
-        <SummaryCard
-          label="Cash Flow"
-          value={fmtCurrency(summary?.cash_flow || 0)}
-          hint={`${period.label}`}
-          accent={(summary?.cash_flow || 0) >= 0 ? "bg-emerald-600" : "bg-rose-500"}
-          icon={ArrowUpRight}
-          testid="summary-cashflow"
-        />
-        <SummaryCard
-          label="Spending"
-          value={fmtCurrency(summary?.expense || 0)}
-          hint={`${period.label}`}
-          accent="bg-rose-500"
-          icon={ArrowDownRight}
-          testid="summary-spending"
-        />
+        <SummaryCard label="Balance" value={fmtCurrency(summary?.total_balance || 0)} hint="Across all accounts" accent="bg-stone-900" icon={WalletIcon} testid="summary-balance" />
+        <SummaryCard label="Cash Flow" value={fmtCurrency(summary?.cash_flow || 0)} hint={period.label} accent={(summary?.cash_flow || 0) >= 0 ? "bg-emerald-600" : "bg-rose-500"} icon={ArrowUpRight} testid="summary-cashflow" />
+        <SummaryCard label="Spending" value={fmtCurrency(summary?.expense || 0)} hint={period.label} accent="bg-rose-500" icon={ArrowDownRight} testid="summary-spending" />
       </div>
 
-      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Balance trend */}
         <div className="lg:col-span-2 bg-white border border-stone-200 rounded-2xl p-6 shadow-sm" data-testid="balance-trend-card">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] font-semibold text-stone-500">Balance Trend</div>
-              <div className="font-['Outfit'] font-bold text-2xl text-stone-900 mt-1">
-                {fmtCurrency(summary?.total_balance || 0)}
-              </div>
-            </div>
-          </div>
-          <div style={{ width: "100%", height: 280 }}>
+          <div className="text-xs uppercase tracking-[0.18em] font-semibold text-stone-500">Balance Trend</div>
+          <div className="font-['Outfit'] font-bold text-2xl text-stone-900 mt-1">{fmtCurrency(summary?.total_balance || 0)}</div>
+          <div style={{ width: "100%", height: 280 }} className="mt-2">
             <ResponsiveContainer>
               <AreaChart data={trend} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                 <defs>
@@ -127,27 +103,18 @@ export default function Dashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f4" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#78716c" }}
-                       tickFormatter={(d) => d.slice(8, 10)}
-                       axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#78716c" }} axisLine={false} tickLine={false}
-                       tickFormatter={(v) => `₹${Math.round(v).toLocaleString("en-IN")}`} width={70} />
-                <Tooltip
-                  formatter={(v) => fmtCurrency(v)}
-                  labelFormatter={(l) => new Date(l).toDateString()}
-                />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#78716c" }} tickFormatter={(d: string) => d.slice(8, 10)} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#78716c" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`} width={70} />
+                <Tooltip formatter={(v: number) => fmtCurrency(v)} labelFormatter={(l: string) => new Date(l).toDateString()} />
                 <Area type="monotone" dataKey="balance" stroke="#10b981" strokeWidth={2.5} fill="url(#balGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Expenses structure */}
         <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-sm" data-testid="expenses-structure-card">
           <div className="text-xs uppercase tracking-[0.18em] font-semibold text-stone-500 mb-1">Expenses Structure</div>
-          <div className="font-['Outfit'] font-bold text-2xl text-stone-900">
-            {fmtCurrency(structure.total)}
-          </div>
+          <div className="font-['Outfit'] font-bold text-2xl text-stone-900">{fmtCurrency(structure.total)}</div>
           {pieData.length === 0 ? (
             <div className="text-sm text-stone-400 py-12 text-center">No expenses in this period.</div>
           ) : (
@@ -158,7 +125,7 @@ export default function Dashboard() {
                     <Pie data={pieData} dataKey="value" innerRadius={48} outerRadius={72} paddingAngle={2}>
                       {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
                     </Pie>
-                    <Tooltip formatter={(v) => fmtCurrency(v)} />
+                    <Tooltip formatter={(v: number) => fmtCurrency(v)} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -179,4 +146,6 @@ export default function Dashboard() {
       </div>
     </div>
   );
-}
+};
+
+export default Dashboard;
