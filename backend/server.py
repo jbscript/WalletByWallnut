@@ -114,6 +114,56 @@ class RecordUpdate(BaseModel):
     payee: Optional[str] = None
     date: Optional[str] = None
 
+class RecurringRule(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = DEMO_USER
+    name: str
+    type: Literal["income", "expense", "transfer"] = "expense"
+    amount: float
+    account_id: str
+    to_account_id: Optional[str] = None
+    category_id: Optional[str] = None
+    payee: str = ""
+    note: str = ""
+    frequency: Literal["daily", "weekly", "monthly", "yearly"] = "monthly"
+    interval: int = 1  # every N units
+    start_date: str   # YYYY-MM-DD
+    next_run: str     # YYYY-MM-DD
+    end_date: Optional[str] = None
+    last_run: Optional[str] = None
+    active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class RecurringCreate(BaseModel):
+    name: str
+    type: Literal["income", "expense", "transfer"] = "expense"
+    amount: float
+    account_id: str
+    to_account_id: Optional[str] = None
+    category_id: Optional[str] = None
+    payee: str = ""
+    note: str = ""
+    frequency: Literal["daily", "weekly", "monthly", "yearly"] = "monthly"
+    interval: int = 1
+    start_date: str
+    end_date: Optional[str] = None
+
+class RecurringUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[Literal["income", "expense", "transfer"]] = None
+    amount: Optional[float] = None
+    account_id: Optional[str] = None
+    to_account_id: Optional[str] = None
+    category_id: Optional[str] = None
+    payee: Optional[str] = None
+    note: Optional[str] = None
+    frequency: Optional[Literal["daily", "weekly", "monthly", "yearly"]] = None
+    interval: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    active: Optional[bool] = None
+
 # ------------------------- Seed data (BudgetBakers hierarchy) -------------------------
 
 PARENT_META = {
@@ -550,7 +600,6 @@ async def analytics_report(start_date: str, end_date: str, prev_start: str, prev
             children = []
             sub_ids = [c["id"] for c in cats if c.get("parent_id") == pid]
             for sid in sub_ids:
-                if cur_s.get(sid, 0) == 0 and prv_s.get(sid, 0) == 0: continue
                 s = by_id[sid]
                 children.append({
                     "category_id": sid,
@@ -604,6 +653,100 @@ async def analytics_cash_flow(start_date: str, end_date: str):
     } for k in sorted(buckets.keys())]
     return {"series": series}
 
+# ------------------------- Recurring rules -------------------------
+
+def _advance_date(d: str, frequency: str, interval: int) -> str:
+    dt = date.fromisoformat(d)
+    if frequency == "daily":
+        dt = dt + timedelta(days=interval)
+    elif frequency == "weekly":
+        dt = dt + timedelta(weeks=interval)
+    elif frequency == "monthly":
+        # add interval months
+        month = dt.month - 1 + interval
+        year = dt.year + month // 12
+        month = month % 12 + 1
+        from calendar import monthrange
+        day = min(dt.day, monthrange(year, month)[1])
+        dt = date(year, month, day)
+    elif frequency == "yearly":
+        try:
+            dt = dt.replace(year=dt.year + interval)
+        except ValueError:
+            # Feb 29 case
+            dt = dt.replace(year=dt.year + interval, day=28)
+    return dt.isoformat()
+
+@api_router.get("/recurring", response_model=List[RecurringRule])
+async def list_recurring():
+    return await db.recurring.find({"user_id": DEMO_USER}, {"_id": 0}).to_list(500)
+
+@api_router.post("/recurring", response_model=RecurringRule)
+async def create_recurring(payload: RecurringCreate):
+    if payload.type == "transfer" and not payload.to_account_id:
+        raise HTTPException(400, "to_account_id required for transfer")
+    data = payload.model_dump()
+    data["next_run"] = data["start_date"]
+    obj = RecurringRule(**data)
+    await db.recurring.insert_one(obj.model_dump())
+    return obj
+
+@api_router.patch("/recurring/{rule_id}", response_model=RecurringRule)
+async def update_recurring(rule_id: str, payload: RecurringUpdate):
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    # If start_date changed and rule not yet run, sync next_run
+    if "start_date" in updates:
+        existing = await db.recurring.find_one({"id": rule_id, "user_id": DEMO_USER}, {"_id": 0})
+        if existing and not existing.get("last_run"):
+            updates["next_run"] = updates["start_date"]
+    res = await db.recurring.update_one({"id": rule_id, "user_id": DEMO_USER}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Rule not found")
+    return await db.recurring.find_one({"id": rule_id}, {"_id": 0})
+
+@api_router.delete("/recurring/{rule_id}")
+async def delete_recurring(rule_id: str):
+    res = await db.recurring.delete_one({"id": rule_id, "user_id": DEMO_USER})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Rule not found")
+    return {"ok": True}
+
+@api_router.post("/recurring/run")
+async def run_recurring():
+    """Materialize all due recurring rules into actual records."""
+    today = date.today().isoformat()
+    rules = await db.recurring.find({"user_id": DEMO_USER, "active": True}, {"_id": 0}).to_list(500)
+    created = 0
+    for rule in rules:
+        next_run = rule.get("next_run") or rule["start_date"]
+        end_date_v = rule.get("end_date")
+        # generate records for every occurrence on or before today
+        while next_run <= today:
+            if end_date_v and next_run > end_date_v:
+                break
+            rec = Record(
+                type=rule["type"],
+                amount=float(rule["amount"]),
+                account_id=rule["account_id"],
+                to_account_id=rule.get("to_account_id"),
+                category_id=rule.get("category_id"),
+                payee=rule.get("payee", ""),
+                note=(rule.get("note", "") + (" [recurring]" if rule.get("note") else "[recurring]")).strip(),
+                date=next_run,
+            )
+            await db.records.insert_one(rec.model_dump())
+            created += 1
+            # advance
+            next_run = _advance_date(next_run, rule["frequency"], int(rule.get("interval", 1)))
+        # save next_run and last_run
+        await db.recurring.update_one(
+            {"id": rule["id"]},
+            {"$set": {"next_run": next_run, "last_run": today}},
+        )
+    return {"created": created}
+
 @api_router.get("/")
 async def root():
     return {"message": "Wallet API"}
@@ -624,6 +767,11 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def on_startup():
     await seed_defaults()
+    # auto-materialize any due recurring transactions
+    try:
+        await run_recurring()
+    except Exception as e:
+        logger.warning(f"run_recurring on startup failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

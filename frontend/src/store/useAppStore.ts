@@ -33,6 +33,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   init: async () => {
     try {
       await Promise.all([get().refreshAccounts(), get().refreshCategories()]);
+      // Materialize any due recurring transactions (backend also runs on its own startup)
+      api.post("/recurring/run", {}).catch(() => {});
     } catch (e) {
       console.error(e);
     } finally {

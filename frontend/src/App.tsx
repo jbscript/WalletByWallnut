@@ -9,6 +9,7 @@ import Accounts from "@/pages/Accounts";
 import Records from "@/pages/Records";
 import Analytics from "@/pages/Analytics";
 import Settings from "@/pages/Settings";
+import Recurring from "@/pages/Recurring";
 
 const App: React.FC = () => {
   const init = useAppStore((s) => s.init);
@@ -24,6 +25,7 @@ const App: React.FC = () => {
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/records" element={<Records />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/recurring" element={<Recurring />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

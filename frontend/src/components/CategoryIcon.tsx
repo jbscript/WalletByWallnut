@@ -2,7 +2,7 @@ import React from "react";
 import {
   Utensils, ShoppingBag, Home, Bus, Car, Ticket, Monitor, CreditCard,
   TrendingUp, Wallet, Briefcase, Gift, Tag, Coins, Banknote, PiggyBank,
-  ArrowLeftRight, LucideIcon,
+  ArrowLeftRight, Repeat, LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -10,6 +10,7 @@ const ICONS: Record<string, LucideIcon> = {
   ticket: Ticket, monitor: Monitor, "credit-card": CreditCard, "trending-up": TrendingUp,
   wallet: Wallet, briefcase: Briefcase, gift: Gift, tag: Tag, coins: Coins,
   banknote: Banknote, "piggy-bank": PiggyBank, "arrow-left-right": ArrowLeftRight,
+  repeat: Repeat,
 };
 
 const hexToBg = (hex: string, alpha = 0.12): string => {
