@@ -1,0 +1,110 @@
+{
+  "theme": "Light",
+  "archetype": "1 (Organic & Earthy) adapted for Finance",
+  "primary_color": "emerald-600",
+  "typography": {
+    "font_imports": "@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap');",
+    "heading_font": "font-['Outfit',sans-serif]",
+    "body_font": "font-['Manrope',sans-serif]",
+    "scale": {
+      "h1": "text-4xl tracking-tight font-bold text-stone-900",
+      "h2": "text-2xl tracking-tight font-semibold text-stone-900",
+      "h3": "text-xl tracking-tight font-semibold text-stone-900",
+      "body": "text-base text-stone-700 leading-relaxed",
+      "small": "text-sm text-stone-500",
+      "overline": "text-xs uppercase tracking-[0.2em] font-semibold text-stone-500"
+    }
+  },
+  "colors": {
+    "background": "bg-stone-50",
+    "surface": "bg-white",
+    "primary": "bg-emerald-600 text-white",
+    "primary_hover": "hover:bg-emerald-700",
+    "expense": "text-rose-500",
+    "expense_bg": "bg-rose-50 text-rose-600",
+    "income": "text-emerald-600",
+    "income_bg": "bg-emerald-50 text-emerald-700",
+    "text_main": "text-stone-900",
+    "text_muted": "text-stone-500",
+    "border": "border-stone-200",
+    "ring": "focus:ring-2 focus:ring-emerald-500/20"
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-6 md:p-8",
+    "grid_gap": "gap-6",
+    "card_radius": "rounded-2xl",
+    "card_style": "bg-white border border-stone-200 shadow-sm overflow-hidden",
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "alignment": "Optical alignment over geometrical. Left-align dense data, forms, and paragraphs."
+  },
+  "pages": {
+    "top_nav": {
+      "layout": "Sticky header (z-50), backdrop-blur-xl bg-white/80 border-b border-stone-200. px-6 h-16 flex items-center justify-between.",
+      "components": [
+        "Logo: Emerald icon + Outfit font brand name",
+        "Nav Links: Clean, minimal gap-8, text-stone-500 hover:text-stone-900 transition-colors",
+        "Record Button: Primary CTA, rounded-full px-6 py-2 bg-emerald-600 text-white font-medium hover:-translate-y-0.5 transition-transform",
+        "User Avatar: 32x32 rounded-full ring-2 ring-stone-100"
+      ]
+    },
+    "dashboard": {
+      "layout": "Control Room Grid. Dense and structured.",
+      "components": [
+        "Summary Gauges/Cards (col-span-1): Balance, Cash Flow, Spending. Large numbers (Outfit), subtle subtext (Manrope). Use small Recharts sparklines inside cards if possible.",
+        "Balance Area Chart (col-span-1 md:col-span-2 lg:col-span-3 row-span-2): Recharts area chart showing 30-day trend. Emerald gradient fill.",
+        "Expenses Structure (col-span-1 md:col-span-1 lg:col-span-1 row-span-2): Donut chart or dense list of top categories with color-coded dots."
+      ]
+    },
+    "accounts": {
+      "layout": "Grid list (grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6).",
+      "components": [
+        "Account Cards: Display bank icon/logo, Account Name, Balance (large INR), currency badge. Card hover: border-emerald-500 shadow-md transition-all.",
+        "Add Account CTA: Dashed border card, flex-col center, stone-400 text."
+      ]
+    },
+    "records": {
+      "layout": "Two-column bento: Left sidebar (w-64) for filters, Right content (flex-1) for list.",
+      "components": [
+        "Sidebar: Clean inputs (search, sort, category checkboxes, type toggles). Minimal borders, use background tints for active states.",
+        "Records List: Grouped by date (overline text for dates). Each row: Category icon in circle, Note/Title, Account Name, Amount (right aligned, green for income, red for expense)."
+      ]
+    },
+    "analytics": {
+      "layout": "Tabs at the top (Incomes vs Expenses). Main chart area + Data table below.",
+      "components": [
+        "Tabs: Shadcn tabs but customized to be pill-shaped, bg-stone-100.",
+        "Charts: Recharts Bar or Line chart with custom Tooltip (rounded borders, shadow-lg, stone-900 text).",
+        "Data Table: Clean lines, border-b only, no vertical borders."
+      ]
+    },
+    "add_record_modal": {
+      "layout": "Shadcn Dialog (max-w-lg), rounded-3xl.",
+      "components": [
+        "Type Tabs: Income / Expense / Transfer toggle.",
+        "Amount Input: Massive text (text-5xl Outfit), border-b only, text-center.",
+        "Category Picker: Grid of icons with text below.",
+        "Account Select & Date Picker: Clean Shadcn selects."
+      ]
+    }
+  },
+  "image_urls": {
+    "user_avatar": {
+      "url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwxfHxzbWlsaW5nJTIwYnVzaW5lc3MlMjB3b21hbiUyMHBvcnRyYWl0JTIwaGVhZHNob3R8ZW58MHx8fHwxNzc4Nzg2NTQ0fDA&ixlib=rb-4.1.0&q=85",
+      "description": "User profile picture for top navigation bar."
+    }
+  },
+  "libraries": {
+    "icons": "lucide-react (since already installed, use this for consistency, avoid phosphor installation overhead unless necessary, but phosphor is allowed if agent prefers. We recommend lucide-react for standard SaaS apps)",
+    "charts": "recharts",
+    "components": "shadcn/ui (dialog, tabs, select, input, form, popover, calendar)"
+  },
+  "instructions_to_main_agent": [
+    "Inject the font imports for 'Outfit' and 'Manrope' into your global CSS or Tailwind config and apply them to standard headings/body.",
+    "Use pure HTML/Tailwind for the primary Dashboard grid to ensure exact 'Control Room' bento structure. Avoid relying solely on rigid Shadcn Cards if they restrict layout.",
+    "For the Records filter sidebar, use Shadcn Form elements but style them minimally (no harsh borders, soft focus rings).",
+    "Ensure multi-currency displays format correctly (INR ₹ by default).",
+    "Add `data-testid` to all interactive elements (buttons, links, inputs, tabs). Example: `data-testid='add-record-btn'`.",
+    "The hero/nav elements should use the 'Crystal Glass' effect (backdrop-blur-xl bg-white/80).",
+    "Chart tooltips must match the theme (white background, stone-200 border, rounded-lg)."
+  ]
+}
