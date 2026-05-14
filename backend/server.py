@@ -73,6 +73,13 @@ class CategoryCreate(BaseModel):
     icon: str = "tag"
     parent_id: Optional[str] = None
 
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[Literal["income", "expense"]] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
+    parent_id: Optional[str] = None
+
 class Record(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -316,12 +323,35 @@ async def create_category(payload: CategoryCreate):
     await db.categories.insert_one(obj.model_dump())
     return obj
 
+@api_router.patch("/categories/{category_id}", response_model=Category)
+async def update_category(category_id: str, payload: CategoryUpdate):
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None or k == "parent_id"}
+    if not updates:
+        raise HTTPException(400, "No fields to update")
+    if "parent_id" in updates and updates["parent_id"]:
+        # validate parent
+        parent = await db.categories.find_one({"id": updates["parent_id"], "user_id": DEMO_USER}, {"_id": 0})
+        if not parent:
+            raise HTTPException(404, "Parent category not found")
+        if parent.get("parent_id") is not None:
+            raise HTTPException(400, "Parent must be a top-level category")
+    res = await db.categories.update_one({"id": category_id, "user_id": DEMO_USER}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Category not found")
+    return await db.categories.find_one({"id": category_id}, {"_id": 0})
+
 @api_router.delete("/categories/{category_id}")
 async def delete_category(category_id: str):
-    res = await db.categories.delete_one({"id": category_id, "user_id": DEMO_USER, "is_default": False})
-    if res.deleted_count == 0:
-        raise HTTPException(404, "Category not found or is default")
-    return {"ok": True}
+    cat = await db.categories.find_one({"id": category_id, "user_id": DEMO_USER}, {"_id": 0})
+    if not cat:
+        raise HTTPException(404, "Category not found")
+    # Cascade: also delete child subcategories if this is a parent
+    child_ids = [c["id"] async for c in db.categories.find({"parent_id": category_id, "user_id": DEMO_USER}, {"_id": 0, "id": 1})]
+    all_ids = [category_id] + child_ids
+    # Null out records pointing at any of these
+    await db.records.update_many({"category_id": {"$in": all_ids}, "user_id": DEMO_USER}, {"$set": {"category_id": None}})
+    res = await db.categories.delete_many({"id": {"$in": all_ids}, "user_id": DEMO_USER})
+    return {"ok": True, "deleted_count": res.deleted_count}
 
 # ------------------------- Record routes -------------------------
 
