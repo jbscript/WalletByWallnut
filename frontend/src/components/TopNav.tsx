@@ -9,6 +9,7 @@ const links = [
   { to: "/records", label: "Records" },
   { to: "/analytics", label: "Analytics" },
   { to: "/recurring", label: "Recurring" },
+  { to: "/import", label: "Import" },
   { to: "/settings", label: "Categories" },
 ];
 

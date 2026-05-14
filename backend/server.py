@@ -1,12 +1,14 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import csv
+import io
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Any
 import uuid
 from datetime import datetime, timezone, date, timedelta
 from collections import defaultdict
@@ -746,6 +748,172 @@ async def run_recurring():
             {"$set": {"next_run": next_run, "last_run": today}},
         )
     return {"created": created}
+
+# ------------------------- CSV Import -------------------------
+
+KNOWN_FIELDS = ["date", "amount", "type", "category", "subcategory", "account", "payee", "note"]
+FIELD_ALIASES = {
+    "date": ["date", "transaction date", "txn date", "posted"],
+    "amount": ["amount", "value", "debit/credit", "total"],
+    "type": ["type", "transaction type", "kind"],
+    "category": ["category", "parent category", "group"],
+    "subcategory": ["subcategory", "sub-category", "sub category"],
+    "account": ["account", "wallet", "from account"],
+    "payee": ["payee", "merchant", "vendor", "description", "narration"],
+    "note": ["note", "notes", "memo", "comment", "details"],
+}
+
+def _suggest_mapping(headers: List[str]) -> dict:
+    result = {}
+    lower = [h.strip().lower() for h in headers]
+    for field, aliases in FIELD_ALIASES.items():
+        for a in aliases:
+            if a in lower:
+                result[field] = headers[lower.index(a)]
+                break
+    return result
+
+def _parse_csv(text: str) -> tuple:
+    reader = csv.reader(io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        return [], []
+    headers = [h.strip() for h in rows[0]]
+    data = [r for r in rows[1:] if any((c or "").strip() for c in r)]
+    return headers, data
+
+def _parse_date(s: str) -> Optional[str]:
+    s = (s or "").strip()
+    if not s:
+        return None
+    fmts = ["%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%d.%m.%Y", "%Y/%m/%d", "%d %b %Y", "%d %B %Y"]
+    for f in fmts:
+        try:
+            return datetime.strptime(s, f).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+class ImportPreviewBody(BaseModel):
+    csv_text: str
+
+@api_router.post("/import/preview")
+async def import_preview(body: ImportPreviewBody):
+    headers, rows = _parse_csv(body.csv_text)
+    if not headers:
+        raise HTTPException(400, "Empty CSV")
+    return {
+        "columns": headers,
+        "suggested_mapping": _suggest_mapping(headers),
+        "preview_rows": rows[:50],
+        "total_rows": len(rows),
+        "known_fields": KNOWN_FIELDS,
+    }
+
+class ImportCommitBody(BaseModel):
+    csv_text: str
+    mapping: dict  # {field_name: column_header}
+    default_account_id: str
+    default_type: Literal["income", "expense"] = "expense"
+    skip_first_row: bool = True  # header
+
+@api_router.post("/import/commit")
+async def import_commit(body: ImportCommitBody):
+    headers, rows = _parse_csv(body.csv_text)
+    if not headers:
+        raise HTTPException(400, "Empty CSV")
+    if not await db.accounts.find_one({"id": body.default_account_id, "user_id": DEMO_USER}):
+        raise HTTPException(404, "Default account not found")
+
+    col_idx = {h: i for i, h in enumerate(headers)}
+    accounts = await db.accounts.find({"user_id": DEMO_USER}, {"_id": 0}).to_list(500)
+    acc_by_name = {a["name"].strip().lower(): a["id"] for a in accounts}
+    categories = await db.categories.find({"user_id": DEMO_USER}, {"_id": 0}).to_list(2000)
+    parent_ids = {c["id"] for c in categories if c.get("parent_id") is None}
+    sub_by_name = defaultdict(list)  # name -> [(id, parent_id)]
+    parent_by_name = {}
+    for c in categories:
+        if c.get("parent_id") is None:
+            parent_by_name[c["name"].strip().lower()] = c["id"]
+        else:
+            sub_by_name[c["name"].strip().lower()].append((c["id"], c["parent_id"]))
+
+    def resolve_category(parent_name: Optional[str], sub_name: Optional[str]) -> Optional[str]:
+        p_lower = (parent_name or "").strip().lower()
+        s_lower = (sub_name or "").strip().lower()
+        if s_lower:
+            candidates = sub_by_name.get(s_lower, [])
+            if candidates:
+                if p_lower and p_lower in parent_by_name:
+                    pid = parent_by_name[p_lower]
+                    for cid, parent_id in candidates:
+                        if parent_id == pid:
+                            return cid
+                return candidates[0][0]
+        if p_lower and p_lower in sub_by_name:
+            # parent_name matched a sub
+            return sub_by_name[p_lower][0][0]
+        if p_lower and p_lower in parent_by_name:
+            return parent_by_name[p_lower]
+        return None
+
+    def get_cell(row: list, field: str) -> Optional[str]:
+        col = body.mapping.get(field)
+        if not col or col not in col_idx:
+            return None
+        i = col_idx[col]
+        return row[i] if i < len(row) else None
+
+    imported = 0
+    skipped = 0
+    errors: List[dict] = []
+    docs = []
+    for line_no, row in enumerate(rows, start=2):  # row 1 is header
+        try:
+            raw_amt = (get_cell(row, "amount") or "").replace(",", "").replace("₹", "").replace("$", "").strip()
+            if not raw_amt:
+                skipped += 1; errors.append({"row": line_no, "reason": "missing amount"}); continue
+            amt = float(raw_amt)
+            raw_date = get_cell(row, "date")
+            d = _parse_date(raw_date) if raw_date else date.today().isoformat()
+            if not d:
+                skipped += 1; errors.append({"row": line_no, "reason": f"unparseable date '{raw_date}'"}); continue
+            # type
+            t_cell = (get_cell(row, "type") or "").strip().lower()
+            if t_cell in ("income", "credit", "+", "in"):
+                rtype = "income"
+            elif t_cell in ("expense", "debit", "-", "out", "spend"):
+                rtype = "expense"
+            elif t_cell in ("transfer",):
+                rtype = "transfer"
+            else:
+                rtype = "income" if amt > 0 and body.default_type == "income" else ("expense" if amt < 0 else body.default_type)
+            amt_abs = abs(amt)
+            # account
+            acc_name = (get_cell(row, "account") or "").strip().lower()
+            acc_id = acc_by_name.get(acc_name) if acc_name else body.default_account_id
+            if not acc_id:
+                acc_id = body.default_account_id
+            # category
+            cat_id = resolve_category(get_cell(row, "category"), get_cell(row, "subcategory"))
+            payee = (get_cell(row, "payee") or "").strip()
+            note = (get_cell(row, "note") or "").strip()
+            rec = Record(
+                type=rtype if rtype != "transfer" else "expense",  # transfer needs to_account; skip in CSV v1
+                amount=amt_abs,
+                account_id=acc_id,
+                category_id=cat_id,
+                payee=payee,
+                note=note,
+                date=d,
+            )
+            docs.append(rec.model_dump())
+            imported += 1
+        except Exception as e:
+            skipped += 1; errors.append({"row": line_no, "reason": str(e)})
+    if docs:
+        await db.records.insert_many(docs)
+    return {"imported": imported, "skipped": skipped, "errors": errors[:50]}
 
 @api_router.get("/")
 async def root():
