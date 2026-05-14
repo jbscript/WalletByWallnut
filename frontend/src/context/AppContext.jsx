@@ -8,6 +8,8 @@ export const AppProvider = ({ children }) => {
   const [categories, setCategories] = useState([]);
   const [period, setPeriod] = useState(monthRange());
   const [loading, setLoading] = useState(true);
+  const [recordsVersion, setRecordsVersion] = useState(0);
+  const bumpRecords = useCallback(() => setRecordsVersion((v) => v + 1), []);
 
   const refreshAccounts = useCallback(async () => {
     const { data } = await api.get("/accounts");
@@ -39,6 +41,8 @@ export const AppProvider = ({ children }) => {
     loading,
     refreshAccounts,
     refreshCategories,
+    recordsVersion,
+    bumpRecords,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

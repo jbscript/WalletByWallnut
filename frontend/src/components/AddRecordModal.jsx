@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,7 @@ const TYPES = [
 ];
 
 export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
-  const { accounts, categories } = useApp();
+  const { accounts, categories, bumpRecords } = useApp();
   const [type, setType] = useState("expense");
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState("");
@@ -90,6 +90,7 @@ export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
         toast.success("Record added");
       }
       onOpenChange(false);
+      bumpRecords();
       onSaved?.();
     } catch (e) {
       console.error(e);
@@ -107,6 +108,7 @@ export const AddRecordModal = ({ open, onOpenChange, onSaved, editRecord }) => {
         <div className="px-6 pt-6 pb-2">
           <DialogHeader>
             <DialogTitle className="font-['Outfit'] text-xl">{editRecord ? "Edit Record" : "New Record"}</DialogTitle>
+            <DialogDescription className="text-sm text-stone-500">Capture income, expense, or transfer between accounts.</DialogDescription>
           </DialogHeader>
         </div>
 

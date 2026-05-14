@@ -25,7 +25,7 @@ const SummaryCard = ({ label, value, hint, accent, icon: Icon, testid }) => (
 );
 
 export default function Dashboard() {
-  const { accounts, period } = useApp();
+  const { accounts, period, recordsVersion } = useApp();
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState([]);
   const [structure, setStructure] = useState({ items: [], total: 0 });
@@ -45,7 +45,7 @@ export default function Dashboard() {
         console.error(e);
       }
     })();
-  }, [period]);
+  }, [period, recordsVersion]);
 
   const balances = summary?.account_balances || {};
 

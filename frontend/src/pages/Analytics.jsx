@@ -11,7 +11,7 @@ import {
 } from "recharts";
 
 export default function Analytics() {
-  const { period, categories } = useApp();
+  const { period, categories, recordsVersion } = useApp();
   const [report, setReport] = useState(null);
   const [trend, setTrend] = useState([]);
   const [cashflow, setCashflow] = useState([]);
@@ -34,7 +34,7 @@ export default function Analytics() {
       setTrend(t.data.series);
       setCashflow(cf.data.series);
     })();
-  }, [period]);
+  }, [period, recordsVersion]);
 
   function shiftBack(yyyy_mm_dd, months) {
     const d = new Date(yyyy_mm_dd);

@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 
 export default function Accounts() {
-  const { accounts, refreshAccounts } = useApp();
+  const { accounts, refreshAccounts, bumpRecords } = useApp();
   const [open, setOpen] = useState(false);
   const [editAccount, setEditAccount] = useState(null);
   const [balances, setBalances] = useState({});
@@ -27,7 +27,7 @@ export default function Accounts() {
   const handleEdit = (a) => { setEditAccount(a); setOpen(true); };
   const handleDelete = async (a) => {
     if (!window.confirm(`Delete account "${a.name}"? Linked records will also be removed.`)) return;
-    try { await api.delete(`/accounts/${a.id}`); toast.success("Account deleted"); await refreshAccounts(); }
+    try { await api.delete(`/accounts/${a.id}`); toast.success("Account deleted"); await refreshAccounts(); bumpRecords(); }
     catch (e) { toast.error("Failed to delete"); }
   };
   const handleArchive = async (a) => {

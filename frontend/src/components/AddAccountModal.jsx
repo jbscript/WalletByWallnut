@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,7 @@ export const AddAccountModal = ({ open, onOpenChange, editAccount }) => {
       <DialogContent className="max-w-md rounded-3xl" data-testid="add-account-dialog">
         <DialogHeader>
           <DialogTitle className="font-['Outfit']">{editAccount ? "Edit account" : "New account"}</DialogTitle>
+          <DialogDescription className="text-sm text-stone-500">Track cash, bank, card, savings or investment balances.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="flex items-center gap-4">

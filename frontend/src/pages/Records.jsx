@@ -19,7 +19,7 @@ import { toast } from "sonner";
 const TYPE_LABELS = { income: "Income", expense: "Expense", transfer: "Transfer" };
 
 export default function Records() {
-  const { accounts, categories, period } = useApp();
+  const { accounts, categories, period, recordsVersion } = useApp();
   const [records, setRecords] = useState([]);
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState("all");
@@ -46,9 +46,15 @@ export default function Records() {
     setRecords(data);
   };
 
-  useEffect(() => { fetchRecords(); }, [period, accountFilter, categoryFilter, typeFilter, sort]);
+  useEffect(() => { fetchRecords(); }, [period, accountFilter, categoryFilter, typeFilter, sort, recordsVersion]);
 
   const onSearchKey = (e) => { if (e.key === "Enter") fetchRecords(); };
+
+  const handleDelete = async (r) => {
+    if (!window.confirm("Delete this record?")) return;
+    try { await api.delete(`/records/${r.id}`); toast.success("Deleted"); fetchRecords(); }
+    catch { toast.error("Failed"); }
+  };
 
   const grouped = useMemo(() => {
     const out = {};
@@ -67,12 +73,6 @@ export default function Records() {
 
   const reset = () => {
     setSearch(""); setAccountFilter("all"); setCategoryFilter("all"); setTypeFilter("all"); setSort("date_desc");
-  };
-
-  const handleDelete = async (r) => {
-    if (!window.confirm("Delete this record?")) return;
-    try { await api.delete(`/records/${r.id}`); toast.success("Deleted"); fetchRecords(); }
-    catch { toast.error("Failed"); }
   };
 
   return (
