@@ -655,6 +655,128 @@ async def analytics_cash_flow(start_date: str, end_date: str):
     } for k in sorted(buckets.keys())]
     return {"series": series}
 
+# ------------------------- Yearly analytics -------------------------
+
+# Special subcategory names that get bucketed separately from "Lifestyle"
+EMI_SUBS = {"loans, interests"}
+INSURANCE_SUBS = {"insurances", "property insurance", "vehicle insurance"}
+RENT_SUBS = {"rent", "mortgage"}
+INVESTMENTS_PARENT = "investments"
+
+def _verdict(value: float, good_max: float, watch_max: float, inverse: bool = False):
+    """For most ratios lower=better. For savings_investment_ratio higher=better -> inverse=True."""
+    if inverse:
+        if value >= good_max: return "good"
+        if value >= watch_max: return "watch"
+        return "high"
+    if value <= good_max: return "good"
+    if value <= watch_max: return "watch"
+    return "high"
+
+@api_router.get("/analytics/yearly")
+async def analytics_yearly(year: int):
+    start = f"{year}-01-01"
+    end = f"{year}-12-31"
+    cats, by_id, parent_of = await _categories_map()
+    name_lc = {c["id"]: c["name"].strip().lower() for c in cats}
+    parent_name_lc = {c["id"]: c["name"].strip().lower() for c in cats if c.get("parent_id") is None}
+
+    records = await db.records.find(
+        {"user_id": DEMO_USER, "date": {"$gte": start, "$lte": end}}, {"_id": 0},
+    ).to_list(50000)
+
+    total_income = 0.0
+    total_expense = 0.0
+    total_investment = 0.0
+    total_emi = 0.0
+    total_insurance = 0.0
+    total_rent = 0.0
+    monthly = defaultdict(lambda: {"income": 0.0, "expense": 0.0, "investment": 0.0})
+
+    for r in records:
+        amt = float(r["amount"])
+        m = r["date"][:7]
+        cid = r.get("category_id")
+        sub_name = name_lc.get(cid or "", "")
+        pid = parent_of.get(cid, cid) if cid else None
+        parent_name = parent_name_lc.get(pid or "", "")
+
+        if r["type"] == "income":
+            total_income += amt
+            monthly[m]["income"] += amt
+        elif r["type"] == "expense":
+            total_expense += amt
+            monthly[m]["expense"] += amt
+            if parent_name == INVESTMENTS_PARENT:
+                total_investment += amt
+                monthly[m]["investment"] += amt
+            else:
+                if sub_name in EMI_SUBS:        total_emi += amt
+                elif sub_name in INSURANCE_SUBS: total_insurance += amt
+                elif sub_name in RENT_SUBS:      total_rent += amt
+
+    total_lifestyle = max(0.0, total_expense - total_emi - total_insurance - total_rent - total_investment)
+    # Investments tracked as expense above? Yes — they sit inside total_expense too. Keep them out of lifestyle but inside total_expense bucket.
+    # Net Cash Balance = Income - (Expenses + Investments). Per user formula treat investments as separate (not double counted in expenses).
+    net_cash = total_income - (total_expense - total_investment) - total_investment  # = income - expense
+    # Re-express per user: Income - (Expense_without_investment + Investments) = Income - Expense_total
+    # Match user formula exactly: Income - (Expenses + Investments) where Expenses are expenses excluding investments
+    expenses_excl_inv = total_expense - total_investment
+    net_cash = total_income - (expenses_excl_inv + total_investment)
+
+    avg_monthly_expense = round(expenses_excl_inv / 12.0, 2)
+    avg_monthly_investment = round(total_investment / 12.0, 2)
+
+    # Emergency fund: sum of balances on savings-type accounts
+    accounts, _, balances = await _account_balances()
+    emergency_fund = sum(balances.get(a["id"], 0.0) for a in accounts if a.get("type") == "savings")
+
+    # Ratios (guard against zero income)
+    def pct(num, denom):
+        return round((num / denom) * 100, 2) if denom > 0 else 0.0
+
+    lifestyle_ratio = pct(total_lifestyle, total_income)
+    committed_ratio = pct(total_lifestyle + total_emi + total_insurance + total_rent, total_income)
+    savings_inv_ratio = pct(net_cash + total_investment, total_income)
+    emi_ratio = pct(total_emi, total_income)
+
+    ratios = {
+        "lifestyle":         {"value": lifestyle_ratio,    "verdict": _verdict(lifestyle_ratio, 50, 65)},
+        "committed":         {"value": committed_ratio,    "verdict": _verdict(committed_ratio, 70, 85)},
+        "savings_investment":{"value": savings_inv_ratio,  "verdict": _verdict(savings_inv_ratio, 20, 10, inverse=True)},
+        "emi":               {"value": emi_ratio,          "verdict": _verdict(emi_ratio, 40, 50)},
+    }
+
+    series = []
+    for i in range(1, 13):
+        key = f"{year}-{i:02d}"
+        b = monthly[key]
+        series.append({
+            "month": key,
+            "income": round(b["income"], 2),
+            "expense": round(b["expense"] - b["investment"], 2),  # expense excludes investment
+            "investment": round(b["investment"], 2),
+        })
+
+    return {
+        "year": year,
+        "summary": {
+            "total_income": round(total_income, 2),
+            "total_expense": round(expenses_excl_inv, 2),
+            "total_investment": round(total_investment, 2),
+            "total_lifestyle": round(total_lifestyle, 2),
+            "total_emi": round(total_emi, 2),
+            "total_insurance": round(total_insurance, 2),
+            "total_rent": round(total_rent, 2),
+            "emergency_fund": round(emergency_fund, 2),
+            "net_cash_balance": round(net_cash, 2),
+            "avg_monthly_expense": avg_monthly_expense,
+            "avg_monthly_investment": avg_monthly_investment,
+        },
+        "ratios": ratios,
+        "monthly": series,
+    }
+
 # ------------------------- Recurring rules -------------------------
 
 def _advance_date(d: str, frequency: str, interval: int) -> str:

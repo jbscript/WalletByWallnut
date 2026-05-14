@@ -4,6 +4,7 @@ import { api, fmtCurrency, prevMonthRange } from "@/lib/api";
 import { PeriodSwitcher } from "@/components/PeriodSwitcher";
 import CategoryIcon from "@/components/CategoryIcon";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import YearlyView from "@/components/YearlyView";
 import {
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from "@/components/ui/tabs";
@@ -77,6 +78,7 @@ const Analytics: React.FC = () => {
           <TabsTrigger value="report" data-testid="analytics-tab-report" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">Incomes & Expenses</TabsTrigger>
           <TabsTrigger value="trend" data-testid="analytics-tab-trend" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">Balance Trend</TabsTrigger>
           <TabsTrigger value="cashflow" data-testid="analytics-tab-cashflow" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">Cash Flow</TabsTrigger>
+          <TabsTrigger value="yearly" data-testid="analytics-tab-yearly" className="rounded-full data-[state=active]:bg-white data-[state=active]:shadow-sm px-4">Yearly</TabsTrigger>
         </TabsList>
 
         <TabsContent value="report" className="mt-6">
@@ -134,6 +136,10 @@ const Analytics: React.FC = () => {
               </ResponsiveContainer>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="yearly" className="mt-6">
+          <YearlyView />
         </TabsContent>
       </Tabs>
     </div>
